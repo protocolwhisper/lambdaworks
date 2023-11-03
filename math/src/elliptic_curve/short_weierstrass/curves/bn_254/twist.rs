@@ -49,7 +49,14 @@ impl IsShortWeierstrass for BN254TwistCurve {
     }
 
     fn b() -> FieldElement<Self::BaseField> {
-        FieldElement::new([FieldElement::from(4), FieldElement::from(4)])
+        FieldElement::new([
+            FieldElement::from_hex_unchecked(
+                "2b149d40ceb8aaae81be18991be06ac3b5b4c5e559dbefa33267e6dc24a138e5",
+            ),
+            FieldElement::from_hex_unchecked(
+                "9713b03af0fed4cd2cafadeed8fdf4a74fa084e52d1852e4a2bd0685c315d2",
+            ),
+        ])
     }
 }
 
@@ -119,33 +126,57 @@ mod tests {
     #[test]
     fn add_points() {
         let px = Level1FE::new([
-            Level0FE::new(U256::from_hex_unchecked("b7b3ccb18ad732d1a8b3e40484b7363f75cef89af6f8db06c35f88148b9706619e23a79d7ec4da022e8f99e4aad1e1a")),
-            Level0FE::new(U256::from_hex_unchecked("0"))  // Assuming imaginary part is 0
+            Level0FE::new(U256::from_hex_unchecked(
+                "8ae7459fe0d23419ec54b150574b77b1d0aa0785ce98d43365898a1d9168a2a",
+            )),
+            Level0FE::new(U256::from_hex_unchecked(
+                "235ec75b0bbcca3f1bab9f3aa4c65d52ccb479cb398b54bd4b0f7e3a24454b44",
+            )),
         ]);
         let py = Level1FE::new([
-            Level0FE::new(U256::from_hex_unchecked("83c7351a041b93078edcd824cfbf0986238a5537abf31c39bda0100f15080982abb5bae91cabb6e2ae057912c174f75")),
-            Level0FE::new(U256::from_hex_unchecked("0"))  // Assuming imaginary part is 0
+            Level0FE::new(U256::from_hex_unchecked(
+                "214ebea9c718706be05072da305b74c1585f9e75dbf99c7859bf2292e07c1691",
+            )),
+            Level0FE::new(U256::from_hex_unchecked(
+                "2efdafd49b6e2d718b4e3b3d78939a6463f5f84f4343ec6b1161971dd38af12f",
+            )),
         ]);
-
         // Similarly for point Q
         let qx = Level1FE::new([
-            Level0FE::new(U256::from_hex_unchecked("848d4c38b6cabfba64b43091135755cffcd6da65f6eb9a9529ce6ffd359f180642aa9393e66db97f7a8542c1d8e27dc")),
-            Level0FE::new(U256::from_hex_unchecked("0"))  // Assuming imaginary part is 0
+            Level0FE::new(U256::from_hex_unchecked(
+                "2b87b85159311f97b20b4c0e27eed978cf94984b06203f853c43192de1579324",
+            )),
+            Level0FE::new(U256::from_hex_unchecked(
+                "27b8bc83db0109e29df764a1379a0b9ba3dab41db33aa9be4aef88d4dd9cb275",
+            )),
         ]);
         let qy = Level1FE::new([
-            Level0FE::new(U256::from_hex_unchecked("ca390d05f986dba142f6f9b6d5467118bce40e10b4b2ffe86cc80ebbd1f1ccbe2a539d6fb6f570030691c3c62d84eca")),
-            Level0FE::new(U256::from_hex_unchecked("0"))  // Assuming imaginary part is 0
+            Level0FE::new(U256::from_hex_unchecked(
+                "18e358db9be18771bb6d8ba89a7be0d521782f10af8398e981b1dd252d114bed",
+            )),
+            Level0FE::new(U256::from_hex_unchecked(
+                "8aa3f8a241032d3832b0f52403eb4ea852e23ec4c1e6d39b08de5ac36a2d43b",
+            )),
         ]);
         let expectedx = Level1FE::new([
-            Level0FE::new(U256::from_hex_unchecked("189abdeda1abc26e67f36216d2270212eff2161639eca25d9625229a476b204e80dda02a82cff695f6ea71d033741ae5")),
-            Level0FE::new(U256::from_hex_unchecked("0")),
+            Level0FE::new(U256::from_hex_unchecked(
+                "27e1bb6cb3f893ef4af84ff82bd36b0c0832e3c5d4649da024b41bfecdc74233",
+            )),
+            Level0FE::new(U256::from_hex_unchecked(
+                "b04a4feada4eba73191184c5f39f98e7319dc888a2b258697511a2035723656",
+            )),
         ]);
         let expectedy = Level1FE::new([
-            Level0FE::new(U256::from_hex_unchecked("18a35df258be38d31c58019d5f1a0bd68f399bc961e58e16afb74eaf0c3585ffd8cca6bffa32f4ee776a12adb24d4359")),
-            Level0FE::new(U256::from_hex_unchecked("0")),
+            Level0FE::new(U256::from_hex_unchecked(
+                "a5490e3b00bc8e434f9a1ba734b05c27c525889bf117bb4d293f5aa54b238c5",
+            )),
+            Level0FE::new(U256::from_hex_unchecked(
+                "136ce0ba382e5d37c3e05eff8365e0e6857eefa150096af33bdbdf327649c0eb",
+            )),
         ]);
         let p = BN254TwistCurve::create_point_from_affine(px, py).unwrap();
         let q = BN254TwistCurve::create_point_from_affine(qx, qy).unwrap();
+        //let expected = BN254TwistCurve::create_point_from_affine(expectedx, expectedy).unwrap();
         let expected = BN254TwistCurve::create_point_from_affine(expectedx, expectedy).unwrap();
         assert_eq!(p.operate_with(&q), expected);
     }
