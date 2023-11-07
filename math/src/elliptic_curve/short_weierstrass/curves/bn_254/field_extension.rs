@@ -166,6 +166,9 @@ impl FieldElement<Degree12ExtensionField> {
 
 #[cfg(test)]
 mod tests {
+    use crate::elliptic_curve::{
+        short_weierstrass::curves::bn_254::twist::BN254TwistCurve, traits::IsEllipticCurve,
+    };
 
     use super::*;
     type Fp12E = FieldElement<Degree12ExtensionField>;
@@ -195,5 +198,10 @@ mod tests {
 
         assert_eq!(element_sequence.pow(2_u16), element_sequence_squared);
         assert_eq!(element_sequence.square(), element_sequence_squared);
+    }
+
+    #[test]
+    fn to_fp12_unnormalized_computes_correctly() {
+        todo!()
     }
 }
