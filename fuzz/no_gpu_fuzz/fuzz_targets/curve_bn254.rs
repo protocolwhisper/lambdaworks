@@ -1,93 +1,74 @@
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
-use lambdaworks_math::field::{
-    element::FieldElement, 
-    fields::fft_friendly::stark_252_prime_field::Stark252PrimeField
+use lambdaworks_math::{
+    cyclic_group::IsGroup,
+    elliptic_curve::{
+        traits::IsEllipticCurve,
+        short_weierstrass::{
+            curves::bn_254::{
+                curve::BN254Curve,
+                twist::BN254TwistCurve,
+            },
+            point::ShortWeierstrassProjectivePoint,
+        }
+    },
 };
-use ark_bn256::{Fr, Fq, G1Point, G2Point};
-use ark_ec::{};
-use ark_ec::AffineRepr;
-use ark_ec::{pairing::Pairing, CurveGroup};
-use ark_ec::{scalar_mul::fixed_base::FixedBase, VariableBaseMSM};
-use ark_ff::{One, PrimeField, UniformRand};
-use ark_std::{marker::PhantomData, ops::Div};
 
-use ark_std::rand::RngCore;
+type LambdaG1 = ShortWeierstrassProjectivePoint<BN254Curve>;
+type LambdaG2 = ShortWeierstrassProjectivePoint<BN254TwistCurve>;
 
-fuzz_target!(|values: (u128, u128)| {
+//TODO: derive arbitrary for Affine and Projective or change this to use &[u8] as input to cover more cases
+fuzz_target!(|values: (u64, u64)| {
+    let (a_val, b_val) = values;
 
-    let (value_u64_a, value_u64_b) = values;
+    let a_g1 = BN254Curve::generator().operate_with_self(a_val);
+    let b_g1 = BN254Curve::generator().operate_with_self(b_val);
 
-    let a =  FieldElement::<Stark252PrimeField>::from(value_u64_a);
-    let b =  FieldElement::<Stark252PrimeField>::from(value_u64_b);
+    let a_g2 = BN254TwistCurve::generator().operate_with_self(a_val);
+    let b_g2 = BN254TwistCurve::generator().operate_with_self(b_val);
 
-    let a_expected = ring.from(value_u64_a);
-    let b_expected = ring.from(value_u64_b);
+    // ***AXIOM SOUNDNESS***
 
-    let add_u64 = &a + &b;
-    let addition = &a_expected + &b_expected;
-    
-    assert_eq!(&(add_u64.to_string())[2..], addition.residue().in_radix(16).to_string());
+    let g1_zero = LambdaG1::neutral_element();
 
-    let sub_u64 = &a - &b;
-    let substraction = &a_expected - &b_expected;
-    assert_eq!(&(sub_u64.to_string())[2..], substraction.residue().in_radix(16).to_string());
-    
-    let mul_u64 = &a * &b;
-    let multiplication = &a_expected * &b_expected;
-    assert_eq!(&(mul_u64.to_string())[2..], multiplication.residue().in_radix(16).to_string());
+    let g2_zero = LambdaG2::neutral_element();
 
-    let pow = &a.pow(b.representative());
-    let expected_pow = a_expected.pow(&b_expected.residue());
-    assert_eq!(&(pow.to_string())[2..], expected_pow.residue().in_radix(16).to_string());
-    
-    if value_u64_b != 0 {
-        
-        let div = &a / &b; 
-        assert_eq!(&div * &b, a.clone());
-        let expected_div = &a_expected / &b_expected;
-        assert_eq!(&(div.to_string())[2..], expected_div.residue().in_radix(16).to_string());
-    }
+    // G1
+    // -O = O
+    assert_eq!(g1_zero.neg(), g1_zero, "Neutral mul element a failed");
 
-    for n in [&a, &b] {
-        match n.sqrt() {
-            Some((fst_sqrt, snd_sqrt)) => {
-                assert_eq!(fst_sqrt.square(), snd_sqrt.square(), "Squared roots don't match each other");
-                assert_eq!(n, &fst_sqrt.square(), "Squared roots don't match original number");
-            }
-            None => {}
-        };
-    }
+    // P * O = O
+    assert_eq!(a_g1.operate_with(&g1_zero), a_g1, "Neutral operate_with element a failed");
+    assert_eq!(b_g1.operate_with(&g1_zero), b_g1, "Neutral operate_with element b failed");
 
-    // Axioms soundness
+    // P * Q = Q * P
+    assert_eq!(a_g1.operate_with(&b_g1), b_g1.operate_with(&a_g1), "Commutative add property failed");
 
-    let one = FieldElement::<Stark252PrimeField>::one();
-    let zero = FieldElement::<Stark252PrimeField>::zero();
+    // (P * Q) * R = Q * (P * R)
+    let c_g1 = a_g1.operate_with(&b_g1);
+    assert_eq!((a_g1.operate_with(&b_g1)).operate_with(&c_g1), a_g1.operate_with(&b_g1.operate_with(&c_g1)), "Associative operate_with property failed");
 
-    assert_eq!(&a + &zero, a, "Neutral add element a failed");
-    assert_eq!(&b + &zero, b, "Neutral mul element b failed");
-    assert_eq!(&a * &one, a, "Neutral add element a failed");
-    assert_eq!(&b * &one, b, "Neutral mul element b failed");
+    // P * -P = O
+    assert_eq!(a_g1.operate_with(&a_g1.neg()), g1_zero, "Inverse add a failed");
+    assert_eq!(b_g1.operate_with(&b_g1.neg()), g1_zero, "Inverse add b failed");
 
-    assert_eq!(&a + &b, &b + &a, "Commutative add property failed");
-    assert_eq!(&a * &b, &b * &a, "Commutative mul property failed");
+    // G2
+    // -O = O
+    assert_eq!(g2_zero.neg(), g2_zero, "Neutral mul element a failed");
 
-    let c = &a * &b;
-    assert_eq!((&a + &b) + &c, &a + (&b + &c), "Associative add property failed");
-    assert_eq!((&a * &b) * &c, &a * (&b * &c), "Associative mul property failed");
+    // P * O = O
+    assert_eq!(a_g2.operate_with(&g2_zero), a_g2, "Neutral operate_with element a failed");
+    assert_eq!(b_g2.operate_with(&g2_zero), b_g2, "Neutral operate_with element b failed");
 
-    assert_eq!(&a * (&b + &c), &a * &b + &a * &c, "Distributive property failed");
+    // P * Q = Q * P
+    assert_eq!(a_g2.operate_with(&b_g2), b_g2.operate_with(&a_g2), "Commutative add property failed");
 
-    assert_eq!(&a - &a, zero, "Inverse add a failed");
-    assert_eq!(&b - &b, zero, "Inverse add b failed");
+    // (P * Q) * R = Q * (P * R)
+    let c_g2 = a_g2.operate_with(&b_g2);
+    assert_eq!((a_g2.operate_with(&b_g2)).operate_with(&c_g2), a_g2.operate_with(&b_g2.operate_with(&c_g2)), "Associative operate_with property failed");
 
-    if a != zero {
-        assert_eq!(&a * a.inv().unwrap(), one, "Inverse mul a failed");
-    }
-    if b != zero {
-        assert_eq!(&b * b.inv().unwrap(), one, "Inverse mul b failed");
-    }
-    
-    
+    // P * -P = O
+    assert_eq!(a_g2.operate_with(&a_g2.neg()), g2_zero, "Inverse add a failed");
+    assert_eq!(b_g2.operate_with(&b_g2.neg()), g2_zero, "Inverse add b failed");
 });

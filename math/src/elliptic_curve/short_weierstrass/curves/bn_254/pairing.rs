@@ -50,6 +50,7 @@ fn double_accumulate_line(
     p: &ShortWeierstrassProjectivePoint<BN254Curve>,
     accumulator: &mut FieldElement<Degree12ExtensionField>,
 ) {
+
     // Implementation specific to BN254 curve
 }
 
