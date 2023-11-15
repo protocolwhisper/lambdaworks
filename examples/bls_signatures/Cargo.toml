@@ -5,6 +5,14 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+name = "bls_signatures"
+path = "src/main.rs"
+
 [dependencies]
 
 lambdaworks-math = { git = "https://github.com/lambdaclass/lambdaworks.git" }
+rand = "0.8"
+num-bigint = { version = "0.4", features = ["rand"] }
+num-traits = "0.2"
+sha3 = "0.10.8"
