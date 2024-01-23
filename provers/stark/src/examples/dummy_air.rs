@@ -1,27 +1,126 @@
-use lambdaworks_math::field::{
-    element::FieldElement, fields::fft_friendly::stark_252_prime_field::Stark252PrimeField,
-    traits::IsFFTField,
-};
+use std::marker::PhantomData;
 
 use crate::{
-    constraints::boundary::{BoundaryConstraint, BoundaryConstraints},
+    constraints::{
+        boundary::{BoundaryConstraint, BoundaryConstraints},
+        transition::TransitionConstraint,
+    },
     context::AirContext,
     frame::Frame,
     proof::options::ProofOptions,
     trace::TraceTable,
     traits::AIR,
-    transcript::IsStarkTranscript,
+};
+use lambdaworks_math::field::{
+    element::FieldElement, fields::fft_friendly::stark_252_prime_field::Stark252PrimeField,
+    traits::IsFFTField,
 };
 
+type StarkField = Stark252PrimeField;
+
 #[derive(Clone)]
+struct FibConstraint<F: IsFFTField> {
+    phantom: PhantomData<F>,
+}
+impl<F: IsFFTField> FibConstraint<F> {
+    pub fn new() -> Self {
+        Self {
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<F> TransitionConstraint<F, F> for FibConstraint<F>
+where
+    F: IsFFTField + Send + Sync,
+{
+    fn degree(&self) -> usize {
+        1
+    }
+
+    fn constraint_idx(&self) -> usize {
+        0
+    }
+
+    fn end_exemptions(&self) -> usize {
+        2
+    }
+
+    fn evaluate(
+        &self,
+        frame: &Frame<F, F>,
+        transition_evaluations: &mut [FieldElement<F>],
+        _periodic_values: &[FieldElement<F>],
+        _rap_challenges: &[FieldElement<F>],
+    ) {
+        let first_step = frame.get_evaluation_step(0);
+        let second_step = frame.get_evaluation_step(1);
+        let third_step = frame.get_evaluation_step(2);
+
+        let a0 = first_step.get_main_evaluation_element(0, 1);
+        let a1 = second_step.get_main_evaluation_element(0, 1);
+        let a2 = third_step.get_main_evaluation_element(0, 1);
+
+        let res = a2 - a1 - a0;
+
+        transition_evaluations[self.constraint_idx()] = res;
+    }
+}
+
+#[derive(Clone)]
+struct BitConstraint<F: IsFFTField> {
+    phantom: PhantomData<F>,
+}
+impl<F: IsFFTField> BitConstraint<F> {
+    pub fn new() -> Self {
+        Self {
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<F> TransitionConstraint<F, F> for BitConstraint<F>
+where
+    F: IsFFTField + Send + Sync,
+{
+    fn degree(&self) -> usize {
+        2
+    }
+
+    fn constraint_idx(&self) -> usize {
+        1
+    }
+
+    fn end_exemptions(&self) -> usize {
+        0
+    }
+
+    fn evaluate(
+        &self,
+        frame: &Frame<F, F>,
+        transition_evaluations: &mut [FieldElement<F>],
+        _periodic_values: &[FieldElement<F>],
+        _rap_challenges: &[FieldElement<F>],
+    ) {
+        let first_step = frame.get_evaluation_step(0);
+
+        let bit = first_step.get_main_evaluation_element(0, 0);
+
+        let res = bit * (bit - FieldElement::<F>::one());
+
+        transition_evaluations[self.constraint_idx()] = res;
+    }
+}
+
 pub struct DummyAIR {
     context: AirContext,
     trace_length: usize,
+    transition_constraints: Vec<Box<dyn TransitionConstraint<StarkField, StarkField>>>,
 }
 
 impl AIR for DummyAIR {
-    type Field = Stark252PrimeField;
-    type RAPChallenges = ();
+    type Field = StarkField;
+    type FieldExtension = StarkField;
     type PublicInputs = ();
 
     const STEP_SIZE: usize = 1;
@@ -31,68 +130,42 @@ impl AIR for DummyAIR {
         _pub_inputs: &Self::PublicInputs,
         proof_options: &ProofOptions,
     ) -> Self {
+        let transition_constraints: Vec<
+            Box<dyn TransitionConstraint<Self::Field, Self::FieldExtension>>,
+        > = vec![
+            Box::new(FibConstraint::new()),
+            Box::new(BitConstraint::new()),
+        ];
+
         let context = AirContext {
             proof_options: proof_options.clone(),
             trace_columns: 2,
-            transition_degrees: vec![2, 1],
             transition_exemptions: vec![0, 2],
             transition_offsets: vec![0, 1, 2],
             num_transition_constraints: 2,
-            num_transition_exemptions: 1,
         };
 
         Self {
             context,
             trace_length,
+            transition_constraints,
         }
-    }
-
-    fn build_auxiliary_trace(
-        &self,
-        _main_trace: &TraceTable<Self::Field>,
-        _rap_challenges: &Self::RAPChallenges,
-    ) -> TraceTable<Self::Field> {
-        TraceTable::empty()
-    }
-
-    fn build_rap_challenges(
-        &self,
-        _transcript: &mut impl IsStarkTranscript<Self::Field>,
-    ) -> Self::RAPChallenges {
-    }
-    fn compute_transition(
-        &self,
-        frame: &Frame<Self::Field>,
-        _rap_challenges: &Self::RAPChallenges,
-    ) -> Vec<FieldElement<Self::Field>> {
-        let first_step = frame.get_evaluation_step(0);
-        let second_step = frame.get_evaluation_step(1);
-        let third_step = frame.get_evaluation_step(2);
-
-        let flag = first_step.get_evaluation_element(0, 0);
-        let a0 = first_step.get_evaluation_element(0, 1);
-        let a1 = second_step.get_evaluation_element(0, 1);
-        let a2 = third_step.get_evaluation_element(0, 1);
-
-        let f_constraint = flag * (flag - FieldElement::one());
-
-        let fib_constraint = a2 - a1 - a0;
-
-        vec![f_constraint, fib_constraint]
     }
 
     fn boundary_constraints(
         &self,
-        _rap_challenges: &Self::RAPChallenges,
+        _rap_challenges: &[FieldElement<Self::Field>],
     ) -> BoundaryConstraints<Self::Field> {
-        let a0 = BoundaryConstraint::new(1, 0, FieldElement::<Self::Field>::one());
-        let a1 = BoundaryConstraint::new(1, 1, FieldElement::<Self::Field>::one());
+        let a0 = BoundaryConstraint::new_main(1, 0, FieldElement::<Self::Field>::one());
+        let a1 = BoundaryConstraint::new_main(1, 1, FieldElement::<Self::Field>::one());
 
         BoundaryConstraints::from_constraints(vec![a0, a1])
     }
 
-    fn number_auxiliary_rap_columns(&self) -> usize {
-        0
+    fn transition_constraints(
+        &self,
+    ) -> &Vec<Box<dyn TransitionConstraint<Self::Field, Self::FieldExtension>>> {
+        &self.transition_constraints
     }
 
     fn context(&self) -> &AirContext {
@@ -100,7 +173,11 @@ impl AIR for DummyAIR {
     }
 
     fn composition_poly_degree_bound(&self) -> usize {
-        self.trace_length
+        self.trace_length * 2
+    }
+
+    fn trace_layout(&self) -> (usize, usize) {
+        (2, 0)
     }
 
     fn trace_length(&self) -> usize {
@@ -109,6 +186,15 @@ impl AIR for DummyAIR {
 
     fn pub_inputs(&self) -> &Self::PublicInputs {
         &()
+    }
+
+    fn compute_transition_verifier(
+        &self,
+        frame: &Frame<Self::FieldExtension, Self::FieldExtension>,
+        periodic_values: &[FieldElement<Self::FieldExtension>],
+        rap_challenges: &[FieldElement<Self::FieldExtension>],
+    ) -> Vec<FieldElement<Self::Field>> {
+        self.compute_transition_prover(frame, periodic_values, rap_challenges)
     }
 }
 
@@ -125,5 +211,9 @@ pub fn dummy_trace<F: IsFFTField>(trace_length: usize) -> TraceTable<F> {
         ret.push(ret[i - 1].clone() + ret[i - 2].clone());
     }
 
-    TraceTable::from_columns(vec![vec![FieldElement::<F>::one(); trace_length], ret], 1)
+    TraceTable::from_columns(
+        vec![vec![FieldElement::<F>::one(); trace_length], ret],
+        2,
+        1,
+    )
 }

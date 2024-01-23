@@ -1,5 +1,7 @@
 use core::fmt::{self, Display};
 
+#[cfg(feature = "lambdaworks-serde-binary")]
+use crate::traits::ByteConversion;
 use crate::{
     errors::CreationError,
     field::{
@@ -8,7 +10,6 @@ use crate::{
         extensions::quadratic::{HasQuadraticNonResidue, QuadraticExtensionField},
         traits::{IsField, IsPrimeField},
     },
-    traits::ByteConversion,
 };
 
 /// Goldilocks Prime Field F_p where p = 2^64 - 2^32 + 1;
@@ -21,14 +22,15 @@ impl Goldilocks64Field {
     pub const NEG_ORDER: u64 = Self::ORDER.wrapping_neg();
 }
 
+#[cfg(feature = "lambdaworks-serde-binary")]
 impl ByteConversion for u64 {
-    #[cfg(feature = "std")]
-    fn to_bytes_be(&self) -> Vec<u8> {
+    #[cfg(feature = "alloc")]
+    fn to_bytes_be(&self) -> alloc::vec::Vec<u8> {
         unimplemented!()
     }
 
-    #[cfg(feature = "std")]
-    fn to_bytes_le(&self) -> Vec<u8> {
+    #[cfg(feature = "alloc")]
+    fn to_bytes_le(&self) -> alloc::vec::Vec<u8> {
         unimplemented!()
     }
 
@@ -175,6 +177,11 @@ impl IsPrimeField for Goldilocks64Field {
         }
         u64::from_str_radix(hex_string, 16).map_err(|_| CreationError::InvalidHexString)
     }
+
+    #[cfg(feature = "std")]
+    fn to_hex(x: &u64) -> String {
+        format!("{:X}", x)
+    }
 }
 
 #[inline(always)]
@@ -209,11 +216,9 @@ fn exp_power_of_2<const POWER_LOG: usize>(base: &u64) -> u64 {
     res
 }
 
-pub type Goldilocks64ExtensionField = QuadraticExtensionField<Goldilocks64Field>;
+pub type Goldilocks64ExtensionField = QuadraticExtensionField<Goldilocks64Field, Goldilocks64Field>;
 
-impl HasQuadraticNonResidue for Goldilocks64Field {
-    type BaseField = Goldilocks64Field;
-
+impl HasQuadraticNonResidue<Goldilocks64Field> for Goldilocks64Field {
     // Verifiable in Sage with
     // `R.<x> = GF(p)[]; assert (x^2 - 7).is_irreducible()`
     fn residue() -> FieldElement<Goldilocks64Field> {
@@ -472,5 +477,12 @@ mod tests {
     fn from_base_type_test() {
         let b = F::from_base_type(1u64);
         assert_eq!(b, F::one());
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn to_hex_test() {
+        let num = F::from_hex("B").unwrap();
+        assert_eq!(F::to_hex(&num), "B");
     }
 }

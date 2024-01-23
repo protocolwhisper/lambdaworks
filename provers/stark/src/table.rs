@@ -1,6 +1,8 @@
-use lambdaworks_math::field::{element::FieldElement, traits::IsFFTField};
-
-use crate::{frame::Frame, trace::StepView};
+use crate::frame::Frame;
+use lambdaworks_math::field::{
+    element::FieldElement,
+    traits::{IsField, IsSubFieldOf},
+};
 
 /// A two-dimensional Table holding field elements, arranged in a row-major order.
 /// This is the basic underlying data structure used for any two-dimensional component in the
@@ -8,13 +10,13 @@ use crate::{frame::Frame, trace::StepView};
 /// Since this struct is a representation of a two-dimensional table, all rows should have the same
 /// length.
 #[derive(Clone, Default, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Table<F: IsFFTField> {
+pub struct Table<F: IsField> {
     pub data: Vec<FieldElement<F>>,
     pub width: usize,
     pub height: usize,
 }
 
-impl<'t, F: IsFFTField> Table<F> {
+impl<'t, F: IsField> Table<F> {
     /// Crates a new Table instance from a one-dimensional array in row major order
     /// and the intended width of the table.
     pub fn new(data: Vec<FieldElement<F>>, width: usize) -> Self {
@@ -78,20 +80,6 @@ impl<'t, F: IsFFTField> Table<F> {
         &mut self.data[row_offset..row_offset + n_cols]
     }
 
-    /// Given a row index and a number of rows, returns a view of a subset of contiguous rows
-    /// of the table, starting from that index.
-    pub fn table_view(&'t self, from_idx: usize, num_rows: usize) -> TableView<'t, F> {
-        let from_offset = from_idx * self.width;
-        let data = &self.data[from_offset..from_offset + self.width * num_rows];
-
-        TableView {
-            data,
-            table_row_idx: from_idx,
-            width: self.width,
-            height: num_rows,
-        }
-    }
-
     /// Given a slice of field elements representing a row, appends it to
     /// the end of the table.
     pub fn append_row(&mut self, row: &[FieldElement<F>]) {
@@ -124,14 +112,23 @@ impl<'t, F: IsFFTField> Table<F> {
     }
 
     /// Given a step size, converts the given table into a `Frame`.
-    pub fn into_frame(&'t self, step_size: usize) -> Frame<'t, F> {
+    pub fn into_frame(&'t self, main_trace_columns: usize, step_size: usize) -> Frame<'t, F, F> {
         debug_assert!(self.height % step_size == 0);
         let steps = (0..self.height)
             .step_by(step_size)
-            .enumerate()
-            .map(|(step_idx, row_idx)| {
-                let table_view = self.table_view(row_idx, step_size);
-                StepView::new(table_view, step_idx)
+            .map(|initial_row_idx| {
+                let end_row_idx = initial_row_idx + step_size;
+
+                let mut step_main_data: Vec<&'t [FieldElement<F>]> = Vec::new();
+                let mut step_aux_data: Vec<&'t [FieldElement<F>]> = Vec::new();
+
+                (initial_row_idx..end_row_idx).for_each(|row_idx| {
+                    let row = self.get_row(row_idx);
+                    step_main_data.push(&row[..main_trace_columns]);
+                    step_aux_data.push(&row[main_trace_columns..]);
+                });
+
+                TableView::new(step_main_data, step_aux_data)
             })
             .collect();
 
@@ -141,47 +138,29 @@ impl<'t, F: IsFFTField> Table<F> {
 
 /// A view of a contiguos subset of rows of a table.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TableView<'t, F: IsFFTField> {
-    pub data: &'t [FieldElement<F>],
-    pub table_row_idx: usize,
-    pub width: usize,
-    pub height: usize,
+pub struct TableView<'t, F, E>
+where
+    E: IsField,
+    F: IsSubFieldOf<F>,
+{
+    pub data: Vec<&'t [FieldElement<F>]>,
+    pub aux_data: Vec<&'t [FieldElement<E>]>,
 }
 
-impl<'t, F: IsFFTField> TableView<'t, F> {
-    pub fn new(
-        data: &'t [FieldElement<F>],
-        table_row_idx: usize,
-        width: usize,
-        height: usize,
-    ) -> Self {
-        Self {
-            data,
-            width,
-            table_row_idx,
-            height,
-        }
+impl<'t, F, E> TableView<'t, F, E>
+where
+    E: IsField,
+    F: IsSubFieldOf<F>,
+{
+    pub fn new(data: Vec<&'t [FieldElement<F>]>, aux_data: Vec<&'t [FieldElement<E>]>) -> Self {
+        Self { data, aux_data }
     }
 
-    pub fn get(&self, row: usize, col: usize) -> &FieldElement<F> {
-        let idx = row * self.width + col;
-        &self.data[idx]
+    pub fn get_main_evaluation_element(&self, row: usize, col: usize) -> &FieldElement<F> {
+        &self.data[row][col]
     }
-}
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::Felt252;
-
-    #[test]
-    fn get_rows_slice_works() {
-        let data: Vec<Felt252> = (0..=11).map(Felt252::from).collect();
-        let table = Table::new(data, 3);
-
-        let slice = table.table_view(1, 2);
-        let expected_data: Vec<Felt252> = (3..=8).map(Felt252::from).collect();
-
-        assert_eq!(slice.data, expected_data);
+    pub fn get_aux_evaluation_element(&self, row: usize, col: usize) -> &FieldElement<E> {
+        &self.aux_data[row][col]
     }
 }
